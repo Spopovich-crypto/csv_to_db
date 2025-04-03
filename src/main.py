@@ -75,7 +75,8 @@ def main():
             return
 
         print(
-            f"\n{folder}フォルダ内でパターン'{pattern}'に一致するCSVファイルを検索中..."
+            f"\n以下のフォルダ内でパターン'{pattern}'に一致するCSVファイルを検索中...\n"
+            f"検索フォルダ： {folder}"
         )
         csv_files = find_csv_files(str(base_folder), pattern)
 
@@ -84,7 +85,7 @@ def main():
             print(f"\n見つかったCSVファイル ({len(csv_files)}件):")
             for i, file_info in enumerate(csv_files, 1):
                 if file_info["type"] == "file":
-                    print(f"{i}. {file_info['path']}")
+                    print(f"{i}. {Path(file_info['path']).name}")
                 else:  # zip
                     print(f"{i}. {file_info['path']} (ZIPファイル内)")
         else:
