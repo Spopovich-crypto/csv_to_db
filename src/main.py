@@ -26,7 +26,7 @@ def main():
     csv_files = find_csv_files(config.folder, config.pattern)
 
     # 結果の表示
-    log_csv_files(csv_files)
+    log_csv_files(csv_files, config.folder)
 
     # 将来的な拡張: データベースへの取り込み処理
     # from src.db import DatabaseManager
