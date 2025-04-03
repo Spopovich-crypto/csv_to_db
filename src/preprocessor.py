@@ -25,6 +25,9 @@ class PreprocessorConfig:
         self.machine_id = os.getenv("MACHINE_ID", "")
         self.data_label = os.getenv("DATA_LABEL", "")
 
+        # CSVファイルの読み込み用エンコーディング設定
+        self.encoding = os.getenv("ENCODING", "utf-8")
+
         # 出力先ディレクトリの作成
         output_path = Path(self.output_dir)
         if not output_path.exists():
@@ -78,8 +81,10 @@ class CsvPreprocessor:
                 try:
                     with zipfile.ZipFile(zip_path, "r") as zip_ref:
                         with zip_ref.open(file_in_zip) as f:
-                            # CSVデータを読み込む
-                            content = io.TextIOWrapper(f, encoding="utf-8").read()
+                            # CSVデータを読み込む（.envで設定されたエンコーディングを使用）
+                            content = io.TextIOWrapper(
+                                f, encoding=self.config.encoding
+                            ).read()
 
                             # 一時的にメモリ上で処理
                             lines = content.splitlines()
@@ -264,8 +269,8 @@ class CsvPreprocessor:
             dict: 読み込んだデータ（ヘッダー情報とデータフレーム）
         """
         try:
-            # ファイルの内容を行ごとに読み込む
-            with open(file_path, "r", encoding="utf-8") as f:
+            # ファイルの内容を行ごとに読み込む（.envで設定されたエンコーディングを使用）
+            with open(file_path, "r", encoding=self.config.encoding) as f:
                 lines = f.readlines()
 
             if len(lines) < 4:  # ヘッダー3行 + データ行1行以上
