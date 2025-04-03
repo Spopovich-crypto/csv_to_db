@@ -175,3 +175,46 @@ class DatabaseManager:
         except Exception as e:
             logging.error(f"テーブル情報取得エラー: {str(e)}")
             return None
+
+    def import_dataframe(self, df, table_name, if_exists="append"):
+        """Polarsデータフレームを直接データベースにインポートする
+
+        Args:
+            df (pl.DataFrame): インポートするデータフレーム
+            table_name (str): インポート先のテーブル名
+            if_exists (str, optional): テーブルが存在する場合の動作。"append"または"replace"。デフォルトは"append"。
+
+        Returns:
+            bool: インポートに成功したかどうか
+        """
+        if not self.connection:
+            logging.error("データベースに接続されていません")
+            return False
+
+        try:
+            # テーブルが存在するか確認
+            check_query = f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"
+            result = self.connection.execute(check_query).fetchall()
+
+            if result and if_exists == "replace":
+                # テーブルを削除
+                self.connection.execute(f"DROP TABLE {table_name}")
+
+            # データフレームをDuckDBに直接インポート
+            # DuckDBはPolarsと互換性があるため、直接インポートが可能
+            if not result or if_exists == "replace":
+                # テーブルが存在しない場合、または置き換える場合は新しいテーブルを作成
+                self.connection.execute(
+                    f"CREATE TABLE {table_name} AS SELECT * FROM df"
+                )
+            else:
+                # テーブルが存在する場合は追加
+                self.connection.execute(f"INSERT INTO {table_name} SELECT * FROM df")
+
+            logging.info(
+                f"データフレームをインポートしました: {len(df)}行 -> {table_name}"
+            )
+            return True
+        except Exception as e:
+            logging.error(f"データフレームインポートエラー: {str(e)}")
+            return False

@@ -364,6 +364,64 @@ class CsvPreprocessor:
 
         return deduplicated_data
 
+    def process_all_files_to_db(self, csv_files, db_manager, table_name):
+        """複数のCSVファイルを処理し、直接データベースに投入する
+
+        Args:
+            csv_files (list): CSVファイル情報のリスト
+            db_manager (DatabaseManager): データベース管理オブジェクト
+            table_name (str): インポート先のテーブル名
+
+        Returns:
+            int: 処理されたレコード数
+        """
+        # 各ファイルの処理結果を格納するリスト
+        processed_results = []
+        total_records = 0
+
+        # 各ファイルを処理
+        for file_info in csv_files:
+            result = self.process_file(file_info)
+            if result is not None:
+                processed_results.append(result)
+
+                # 処理したデータを直接DBに投入
+                if db_manager.import_dataframe(result["data"], table_name):
+                    total_records += len(result["data"])
+
+        if not processed_results:
+            logging.info("処理対象のCSVファイルがありませんでした。")
+            return 0
+
+        # 重複を削除（TIME, SENSOR_IDが同じデータを重複とみなす）
+        if total_records > 0:
+            try:
+                # データベース上で重複を削除するクエリを実行
+                dedupe_query = f"""
+                CREATE TABLE {table_name}_temp AS 
+                SELECT * FROM (
+                    SELECT *, ROW_NUMBER() OVER (PARTITION BY TIME, SENSOR_ID ORDER BY TIME) as rn 
+                    FROM {table_name}
+                ) WHERE rn = 1;
+                DROP TABLE {table_name};
+                ALTER TABLE {table_name}_temp RENAME TO {table_name};
+                """
+                db_manager.execute_query(dedupe_query)
+
+                # 重複削除後のレコード数を取得
+                count_query = f"SELECT COUNT(*) FROM {table_name}"
+                result = db_manager.execute_query(count_query)
+                if result:
+                    final_count = result.fetchone()[0]
+                    duplicate_count = total_records - final_count
+                    if duplicate_count > 0:
+                        logging.info(f"重複データを {duplicate_count} 件削除しました。")
+                    total_records = final_count
+            except Exception as e:
+                logging.error(f"重複削除中にエラーが発生しました: {str(e)}")
+
+        return total_records
+
     def _transform_to_vertical(self, data, file_name):
         """横持ちデータを縦持ちデータに変換する
 
