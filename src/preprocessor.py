@@ -441,13 +441,29 @@ class CsvPreprocessor:
                             )
 
                             # 1日分のデータから重複を除外して一時テーブルに挿入
+                            # テーブルのカラム名を取得
+                            columns_info = db_manager.get_table_info(
+                                f"{table_name}_temp"
+                            )
+                            if not columns_info:
+                                logging.error(
+                                    f"テーブル {table_name}_temp の情報を取得できませんでした"
+                                )
+                                continue
+
+                            # カラム名のリストを作成
+                            column_names = [col[1] for col in columns_info]
+                            columns_str = ", ".join(
+                                [f"t.{col}" for col in column_names]
+                            )
+
                             batch_query = f"""
                             INSERT INTO {table_name}_temp 
-                            SELECT * FROM (
+                            SELECT {columns_str} FROM (
                                 SELECT *, ROW_NUMBER() OVER (PARTITION BY TIME, SENSOR_ID ORDER BY TIME) as rn 
                                 FROM {table_name}
                                 WHERE DATE_TRUNC('day', TIME) = '{date_str}'
-                            ) WHERE rn = 1
+                            ) t WHERE t.rn = 1
                             """
                             db_manager.execute_query(batch_query)
 
