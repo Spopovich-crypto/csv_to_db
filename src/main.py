@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import zipfile
@@ -37,14 +38,21 @@ def find_csv_files(base_folder, pattern_str):
                                     }
                                 )
                 except zipfile.BadZipFile:
-                    print(f"警告: 不正なZIPファイル: {file_path}")
+                    logging.warning(f"不正なZIPファイル: {file_path}")
                 except Exception as e:
-                    print(f"エラー: ZIPファイル処理中のエラー {file_path}: {str(e)}")
+                    logging.error(f"ZIPファイル処理中のエラー {file_path}: {str(e)}")
 
     return csv_files
 
 
 def main():
+    # ロガーの設定
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
     # .envファイルを読み込む
     load_dotenv()
 
@@ -57,38 +65,38 @@ def main():
     machine_id = os.getenv("MACHINE_ID")
     data_label = os.getenv("DATA_LABEL")
 
-    # 環境変数の値を表示
-    print(f"設定情報:")
-    print(f"FOLDER: {folder}")
-    print(f"PATTERN: {pattern}")
-    print(f"DB: {db}")
-    print(f"ENCODING: {encoding}")
-    print(f"PLANT: {plant}")
-    print(f"MACHINE_ID: {machine_id}")
-    print(f"DATA_LABEL: {data_label}")
+    # 環境変数の値を表示（Debug情報）
+    logging.debug("設定情報:")
+    logging.debug(f"FOLDER: {folder}")
+    logging.debug(f"PATTERN: {pattern}")
+    logging.debug(f"DB: {db}")
+    logging.debug(f"ENCODING: {encoding}")
+    logging.debug(f"PLANT: {plant}")
+    logging.debug(f"MACHINE_ID: {machine_id}")
+    logging.debug(f"DATA_LABEL: {data_label}")
 
     # 指定されたパターンに一致するCSVファイルを検索
     if folder and pattern:
         base_folder = Path(folder)
         if not base_folder.exists():
-            print(f"エラー: 指定されたフォルダが存在しません: {folder}")
+            logging.error(f"指定されたフォルダが存在しません: {folder}")
             return
 
-        print(
-            f"\n以下のフォルダ内でパターン'{pattern}'に一致するCSVファイルを検索中...\n"
+        logging.info(
+            f"以下のフォルダ内でパターン'{pattern}'に一致するCSVファイルを検索中...\n"
             f"検索フォルダ： {folder}"
         )
         csv_files = find_csv_files(str(base_folder), pattern)
 
         # 結果の表示
         if csv_files:
-            print(f"\n見つかったCSVファイル ({len(csv_files)}件):")
+            logging.info(f"見つかったCSVファイル ({len(csv_files)}件):")
             for i, file_info in enumerate(csv_files, 1):
                 if file_info["type"] == "file":
-                    print(f"{i}. {Path(file_info['path']).name}")
+                    logging.info(f"{i}. {Path(file_info['path']).name}")
                 else:  # zip
-                    print(f"{i}. {Path(file_info['path']).name} (ZIPファイル内)")
+                    logging.info(f"{i}. {Path(file_info['path']).name} (ZIPファイル内)")
         else:
-            print("\n条件に一致するCSVファイルは見つかりませんでした。")
+            logging.info("条件に一致するCSVファイルは見つかりませんでした。")
     else:
-        print("エラー: .envファイルにFOLDERまたはPATTERNが設定されていません。")
+        logging.error(".envファイルにFOLDERまたはPATTERNが設定されていません。")
