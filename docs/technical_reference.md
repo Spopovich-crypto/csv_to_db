@@ -372,7 +372,7 @@ CSV to DBツールは、以下のパフォーマンスとメモリ最適化を�
            gc.collect()
    ```
 
-4. **DuckDBのメモリ制限**: DuckDBのメモリ使用量を制限し、一時ファイルを使用するように設定することで、メモリ使用量を削減します
+4. **DuckDBのメモリ制限**: DuckDBのメモリ使用量と一時ディレクトリのサイズ制限を設定することで、メモリとディスク使用量を制御します
    ```python
    # src/db.py
    def connect(self):
@@ -385,6 +385,10 @@ CSV to DBツールは、以下のパフォーマンスとメモリ最適化を�
            
            # 一時ファイルを使用するように設定
            self.connection.execute("SET temp_directory='./temp'")
+           
+           # 一時ディレクトリのサイズ制限を設定
+           if self.config and hasattr(self.config, "max_temp_directory_size"):
+               self.connection.execute(f"SET max_temp_directory_size='{self.config.max_temp_directory_size}'")
            # ...
        except Exception as e:
            # ...
@@ -398,6 +402,9 @@ CSV to DBツールは、以下のパフォーマンスとメモリ最適化を�
 # メモリ最適化設定
 BATCH_SIZE=5     # 一度に処理するCSVファイル数（小さくするとメモリ使用量が減少）
 CHUNK_SIZE=10000 # 一度に処理するデータ行数（小さくするとメモリ使用量が減少）
+
+# DuckDB設定
+MAX_TEMP_DIRECTORY_SIZE=20GB  # テンポラリディレクトリのサイズ制限
 ```
 
 これらの設定は、`src/config.py`で読み込まれます：
@@ -410,6 +417,9 @@ def __init__(self):
     # メモリ最適化設定
     self.batch_size = int(os.getenv("BATCH_SIZE", "5"))
     self.chunk_size = int(os.getenv("CHUNK_SIZE", "10000"))
+    
+    # DuckDB設定
+    self.max_temp_directory_size = os.getenv("MAX_TEMP_DIRECTORY_SIZE", "20GB")
 ```
 
 ### メモリ使用量とパフォーマンスのトレードオフ
