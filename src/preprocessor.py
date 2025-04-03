@@ -443,7 +443,22 @@ class CsvPreprocessor:
 
         # 縦持ちデータの作成（高速化のためにpolarsのmelt関数を使用）
         # まず必要な列だけを抽出
-        time_col = df.select("TIME")
+        # TIMEカラムをdatetime型に変換
+        try:
+            time_col = df.select("TIME").with_columns(
+                pl.col("TIME").str.to_datetime("%Y/%m/%d %H:%M:%S").alias("TIME")
+            )
+        except Exception as e:
+            # 日付形式が異なる場合は別の形式を試す
+            try:
+                time_col = df.select("TIME").with_columns(
+                    pl.col("TIME").str.to_datetime("%Y-%m-%d %H:%M:%S").alias("TIME")
+                )
+            except Exception as e2:
+                logging.warning(
+                    f"日時の変換に失敗しました: {str(e2)}。文字列のまま処理を続行します。"
+                )
+                time_col = df.select("TIME")
 
         # 結果を格納するデータフレームのリスト
         vertical_dfs = []
