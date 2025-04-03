@@ -78,7 +78,7 @@ csv-to-db/
 
 ```bash
 # ビルドスクリプトを実行
-python build_exe.py
+uv run build_exe.py
 ```
 
 ビルドが成功すると、`dist`フォルダに`csv_to_db.exe`が生成されます。
