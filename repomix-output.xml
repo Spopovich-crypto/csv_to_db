@@ -1,0 +1,545 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+<additional_info>
+
+</additional_info>
+
+</file_summary>
+
+<directory_structure>
+.gitignore
+.python-version
+create_test_zip.py
+data/Cond_data.csv
+data/other_data.csv
+data/subfolder/User_data.csv
+main.py
+pyproject.toml
+README.md
+src/__init__.py
+src/config.py
+src/db.py
+src/file_finder.py
+src/logger.py
+src/main.py
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path=".gitignore">
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+</file>
+
+<file path=".python-version">
+3.11
+</file>
+
+<file path="create_test_zip.py">
+import os
+import zipfile
+
+# ZIPファイルを作成
+with zipfile.ZipFile("data/test_archive.zip", "w") as zipf:
+    # CSVファイルをZIPに追加
+    zipf.writestr(
+        "test_data.csv",
+        "date,value\n2024-01-01,1000\n2024-01-02,2000\n2024-01-03,3000\n",
+    )
+    zipf.writestr("other_file.txt", "This is a text file\n")
+
+print("ZIP file created: data/test_archive.zip")
+</file>
+
+<file path="data/Cond_data.csv">
+date,value
+2024-01-01,100
+2024-01-02,200
+2024-01-03,300
+</file>
+
+<file path="data/other_data.csv">
+date,value
+2024-01-01,400
+2024-01-02,500
+2024-01-03,600
+</file>
+
+<file path="data/subfolder/User_data.csv">
+date,value
+2024-01-01,700
+2024-01-02,800
+2024-01-03,900
+</file>
+
+<file path="src/__init__.py">
+"""CSVファイル検索とデータベース取り込みパッケージ"""
+</file>
+
+<file path="src/config.py">
+import logging
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+class Config:
+    """アプリケーション設定を管理するクラス"""
+
+    def __init__(self):
+        """環境変数から設定を読み込む"""
+        # .envファイルを読み込む
+        load_dotenv()
+
+        # 必須の環境変数
+        self.folder = os.getenv("FOLDER")
+        self.pattern = os.getenv("PATTERN")
+
+        # オプションの環境変数（デフォルト値付き）
+        self.db = os.getenv("DB", "sensor_data.duckdb")
+        self.encoding = os.getenv("ENCODING", "utf-8")
+        self.plant = os.getenv("PLANT", "")
+        self.machine_id = os.getenv("MACHINE_ID", "")
+        self.data_label = os.getenv("DATA_LABEL", "")
+
+    def validate(self):
+        """設定値を検証する
+
+        Returns:
+            bool: 設定が有効かどうか
+        """
+        if not self.folder or not self.pattern:
+            logging.error(".envファイルにFOLDERまたはPATTERNが設定されていません。")
+            return False
+
+        # フォルダの存在確認
+        folder_path = Path(self.folder)
+        if not folder_path.exists():
+            logging.error(f"指定されたフォルダが存在しません: {self.folder}")
+            return False
+
+        return True
+
+    def log_settings(self):
+        """設定情報をログに出力する"""
+        logging.debug("設定情報:")
+        logging.debug(f"FOLDER: {self.folder}")
+        logging.debug(f"PATTERN: {self.pattern}")
+        logging.debug(f"DB: {self.db}")
+        logging.debug(f"ENCODING: {self.encoding}")
+        logging.debug(f"PLANT: {self.plant}")
+        logging.debug(f"MACHINE_ID: {self.machine_id}")
+        logging.debug(f"DATA_LABEL: {self.data_label}")
+</file>
+
+<file path="src/db.py">
+import logging
+from pathlib import Path
+
+
+class DatabaseManager:
+    """データベース操作を管理するクラス"""
+
+    def __init__(self, db_path, encoding="utf-8"):
+        """データベースマネージャーを初期化する
+
+        Args:
+            db_path (str): データベースファイルのパス
+            encoding (str, optional): 使用するエンコーディング. デフォルトは "utf-8".
+        """
+        self.db_path = Path(db_path)
+        self.encoding = encoding
+        self.connection = None
+
+    def connect(self):
+        """データベースに接続する
+
+        Returns:
+            bool: 接続に成功したかどうか
+        """
+        try:
+            # 将来的な実装のためのプレースホルダー
+            # 例: self.connection = duckdb.connect(str(self.db_path))
+            logging.info(f"データベースに接続しました: {self.db_path}")
+            return True
+        except Exception as e:
+            logging.error(f"データベース接続エラー: {str(e)}")
+            return False
+
+    def close(self):
+        """データベース接続を閉じる"""
+        if self.connection:
+            # 将来的な実装のためのプレースホルダー
+            # 例: self.connection.close()
+            self.connection = None
+            logging.info("データベース接続を閉じました")
+
+    def import_csv(self, csv_path, table_name, metadata=None):
+        """CSVファイルからデータをインポートする
+
+        Args:
+            csv_path (str): CSVファイルのパス
+            table_name (str): インポート先のテーブル名
+            metadata (dict, optional): 追加のメタデータ. デフォルトは None.
+
+        Returns:
+            bool: インポートに成功したかどうか
+        """
+        if not self.connection:
+            logging.error("データベースに接続されていません")
+            return False
+
+        try:
+            # 将来的な実装のためのプレースホルダー
+            # 例:
+            # sql = f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT * FROM read_csv('{csv_path}', ...)"
+            # self.connection.execute(sql)
+            logging.info(f"CSVファイルをインポートしました: {csv_path} -> {table_name}")
+            return True
+        except Exception as e:
+            logging.error(f"CSVインポートエラー: {str(e)}")
+            return False
+</file>
+
+<file path="src/file_finder.py">
+import logging
+import re
+import zipfile
+from pathlib import Path
+
+
+def find_csv_files(base_folder, pattern_str):
+    """指定されたフォルダ内でパターンに一致するCSVファイルを検索する
+
+    Args:
+        base_folder (str): 検索対象のベースフォルダパス
+        pattern_str (str): ファイル名の検索パターン（正規表現）
+
+    Returns:
+        list: 見つかったCSVファイルの情報リスト
+    """
+    pattern = re.compile(pattern_str)
+    csv_files = []
+    base_path = Path(base_folder)
+
+    # 通常のファイルシステム内を検索（再帰的に全てのファイルを取得）
+    for file_path in base_path.glob("**/*"):
+        if file_path.is_file():
+            # CSVファイルの検索
+            if file_path.suffix.lower() == ".csv" and pattern.search(file_path.name):
+                csv_files.append({"path": str(file_path), "type": "file"})
+
+            # ZIPファイルの検索と処理
+            elif file_path.suffix.lower() == ".zip":
+                csv_files.extend(_process_zip_file(file_path, pattern))
+
+    return csv_files
+
+
+def _process_zip_file(file_path, pattern):
+    """ZIPファイル内のCSVファイルを処理する
+
+    Args:
+        file_path (Path): ZIPファイルのパス
+        pattern (re.Pattern): ファイル名の検索パターン
+
+    Returns:
+        list: ZIPファイル内で見つかったCSVファイルの情報リスト
+    """
+    csv_files = []
+    try:
+        with zipfile.ZipFile(file_path, "r") as zip_ref:
+            for zip_info in zip_ref.infolist():
+                zip_file_name = Path(zip_info.filename).name
+                if zip_info.filename.endswith(".csv") and pattern.search(zip_file_name):
+                    csv_files.append(
+                        {
+                            "path": f"{file_path}::{zip_info.filename}",
+                            "type": "zip",
+                            "zip_path": str(file_path),
+                            "file_in_zip": zip_info.filename,
+                        }
+                    )
+    except zipfile.BadZipFile:
+        logging.warning(f"不正なZIPファイル: {file_path}")
+    except Exception as e:
+        logging.error(f"ZIPファイル処理中のエラー {file_path}: {str(e)}")
+
+    return csv_files
+</file>
+
+<file path="main.py">
+from src.main import main
+
+if __name__ == "__main__":
+    main()
+</file>
+
+<file path="pyproject.toml">
+[project]
+name = "csv-to-db"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "duckdb>=1.2.1",
+    "numpy>=2.2.4",
+    "pandas>=2.2.3",
+    "polars>=1.26.0",
+    "pyarrow>=19.0.1",
+    "pytest>=8.3.5",
+    "python-dotenv>=1.1.0",
+]
+</file>
+
+<file path="src/logger.py">
+import logging
+
+
+def setup_logger():
+    """アプリケーションのロガーを設定する"""
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+
+def log_csv_files(csv_files, folder):
+    """見つかったCSVファイルの情報をログに出力する
+
+    Args:
+        csv_files (list): CSVファイル情報のリスト
+        folder (str): 検索対象フォルダ（パス表示から省略するため）
+    """
+    if csv_files:
+        logging.info(f"見つかったCSVファイル ({len(csv_files)}件):")
+        for i, file_info in enumerate(csv_files, 1):
+            if file_info["type"] == "file":
+                # フォルダ部分を省略して相対パスで表示
+                relative_path = (
+                    file_info["path"]
+                    .replace(folder + "/", "")
+                    .replace(folder + "\\", "")
+                )
+                logging.info(f"{i}. {relative_path}")
+            else:  # zip
+                # ZIPファイルのパスからもフォルダ部分を省略
+                relative_zip_path = (
+                    file_info["zip_path"]
+                    .replace(folder + "/", "")
+                    .replace(folder + "\\", "")
+                )
+                logging.info(
+                    f"{i}. {relative_zip_path}::{file_info['file_in_zip']} (ZIPファイル内)"
+                )
+    else:
+        logging.info("条件に一致するCSVファイルは見つかりませんでした。")
+
+
+def log_search_start(folder, pattern):
+    """検索開始情報をログに出力する
+
+    Args:
+        folder (str): 検索対象フォルダ
+        pattern (str): 検索パターン
+    """
+    logging.info(
+        f"以下のフォルダ内でパターン'{pattern}'に一致するCSVファイルを検索中...\n"
+        f"検索フォルダ： {folder}"
+    )
+</file>
+
+<file path="README.md">
+# CSV to DB
+
+CSVファイル検索とデータベース取り込みツール
+
+## 概要
+
+このツールは、指定されたフォルダ内でパターンに一致するCSVファイルを検索し、将来的にはデータベースに取り込む機能を提供します。
+通常のファイルシステム内のCSVファイルだけでなく、ZIPファイル内のCSVファイルも検索対象となります。
+
+## インストール
+
+```bash
+# リポジトリをクローン
+git clone https://github.com/yourusername/csv-to-db.git
+cd csv-to-db
+
+# 依存関係のインストール
+uv pip install -e .
+```
+
+## 使用方法
+
+1. `.env`ファイルを設定します（下記の設定項目を参照）
+2. 以下のコマンドを実行します：
+
+```bash
+uv run main.py
+```
+
+## 設定項目
+
+`.env`ファイルに以下の設定を記述します：
+
+| 設定項目 | 説明 | 必須 | デフォルト値 |
+|----------|------|------|------------|
+| FOLDER | 検索対象のフォルダパス | ✅ | - |
+| PATTERN | CSVファイル名の検索パターン（正規表現） | ✅ | - |
+| DB | 使用するデータベースファイル | ❌ | sensor_data.duckdb |
+| ENCODING | ファイルのエンコーディング | ❌ | utf-8 |
+| PLANT | プラント名 | ❌ | - |
+| MACHINE_ID | 機械ID | ❌ | - |
+| DATA_LABEL | データラベル | ❌ | - |
+
+設定例：
+```
+# データ取り込み用設定
+FOLDER=data
+PATTERN=(Cond|User|test)
+DB=sensor_data.duckdb
+ENCODING=utf-8
+PLANT=AAA
+MACHINE_ID=No.1
+DATA_LABEL=2024
+```
+
+## ファイル構成
+
+```
+csv-to-db/
+├── .env                # 環境変数設定ファイル
+├── main.py             # エントリーポイント
+├── pyproject.toml      # プロジェクト設定
+├── README.md           # このファイル
+├── create_test_zip.py  # テスト用ZIPファイル作成スクリプト
+├── data/               # データフォルダ
+└── src/                # ソースコード
+    ├── __init__.py     # パッケージ初期化
+    ├── main.py         # メイン処理
+    ├── config.py       # 設定管理
+    ├── file_finder.py  # ファイル検索
+    ├── logger.py       # ロギング
+    └── db.py           # データベース操作（将来拡張用）
+```
+
+## 開発情報
+
+### 依存ライブラリ
+
+- duckdb: データベースエンジン
+- numpy: 数値計算ライブラリ
+- pandas: データ分析ライブラリ
+- polars: 高速データフレームライブラリ
+- pyarrow: Apache Arrowデータフォーマット
+- pytest: テストフレームワーク
+- python-dotenv: .envファイルからの環境変数読み込み
+
+### テスト
+
+テスト用のZIPファイルを作成するには：
+
+```bash
+python create_test_zip.py
+```
+
+## ライセンス
+
+[ライセンス情報をここに記載]
+</file>
+
+<file path="src/main.py">
+"""CSVファイル検索とデータベース取り込みのメインモジュール"""
+
+import logging
+
+from src.config import Config
+from src.file_finder import find_csv_files
+from src.logger import log_csv_files, log_search_start, setup_logger
+
+
+def main():
+    """メイン実行関数"""
+    # ロガーの設定
+    setup_logger()
+
+    # 設定の読み込みと検証
+    config = Config()
+    config.log_settings()
+
+    if not config.validate():
+        return
+
+    # 検索開始のログ出力
+    log_search_start(config.folder, config.pattern)
+
+    # 指定されたパターンに一致するCSVファイルを検索
+    csv_files = find_csv_files(config.folder, config.pattern)
+
+    # 結果の表示
+    log_csv_files(csv_files, config.folder)
+
+    # 将来的な拡張: データベースへの取り込み処理
+    # from src.db import DatabaseManager
+    # db_manager = DatabaseManager(config.db, config.encoding)
+    # db_manager.connect()
+    # for file_info in csv_files:
+    #     # ファイルからデータを取り込む処理
+    #     pass
+    # db_manager.close()
+
+
+if __name__ == "__main__":
+    main()
+</file>
+
+</files>
