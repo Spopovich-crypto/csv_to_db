@@ -1,6 +1,7 @@
 """CSVファイル検索、前処理、データベース取り込みのメインモジュール"""
 
 import logging
+import time
 from pathlib import Path
 
 from src.config import Config
@@ -40,8 +41,16 @@ def main():
     preprocessor_config = PreprocessorConfig()
     preprocessor = CsvPreprocessor(preprocessor_config)
 
+    # 処理時間の計測開始
+    start_time = time.time()
+
     # 複数のCSVファイルを処理し、統合する
     integrated_data = preprocessor.process_all_files(csv_files)
+
+    # 処理時間の計測終了
+    end_time = time.time()
+    processing_time = end_time - start_time
+    logging.info(f"前処理の実行時間: {processing_time:.3f}秒")
 
     if integrated_data is None:
         logging.info("前処理が必要なCSVファイルはありませんでした。")
