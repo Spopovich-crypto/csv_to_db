@@ -6,9 +6,11 @@ import json
 import logging
 import os
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
+from polars import col, lit
 
 
 class PreprocessorConfig:
@@ -120,7 +122,7 @@ class CsvPreprocessor:
                                 1:
                             ]  # 最初の空欄をTIMEに置き換え
 
-                            # データを解析
+                            # データを解析してPolarsのDataFrameに変換
                             data_rows = []
                             for line in data_lines:
                                 values = [val.strip() for val in line.split(",")]
@@ -130,8 +132,8 @@ class CsvPreprocessor:
                                         row_data[col] = values[i]
                                     data_rows.append(row_data)
 
-                            # DataFrameに変換
-                            df = pd.DataFrame(data_rows)
+                            # Polarsのデータフレームに変換
+                            df = pl.DataFrame(data_rows)
 
                             # ヘッダー情報を辞書として保存
                             headers = {
@@ -228,7 +230,7 @@ class CsvPreprocessor:
         # 処理済みリストに追加
         self.processed_files[file_path] = {
             "hash": file_hash,
-            "timestamp": pd.Timestamp.now().isoformat(),
+            "timestamp": datetime.now().isoformat(),
         }
 
         # 処理済みリストを保存
@@ -304,8 +306,8 @@ class CsvPreprocessor:
                         row_data[col] = values[i]
                     data.append(row_data)
 
-            # DataFrameに変換
-            df = pd.DataFrame(data)
+            # Polarsのデータフレームに変換
+            df = pl.DataFrame(data)
 
             # ヘッダー情報を辞書として保存
             headers = {
@@ -327,7 +329,7 @@ class CsvPreprocessor:
             csv_files (list): CSVファイル情報のリスト
 
         Returns:
-            pd.DataFrame: 統合された縦持ちデータ
+            pl.DataFrame: 統合された縦持ちデータ
         """
         # 各ファイルの処理結果を格納するリスト
         processed_results = []
@@ -343,14 +345,10 @@ class CsvPreprocessor:
             return None
 
         # すべてのデータを統合
-        all_data = pd.concat(
-            [result["data"] for result in processed_results], ignore_index=True
-        )
+        all_data = pl.concat([result["data"] for result in processed_results])
 
         # 重複を削除（TIME, SENSOR_IDが同じデータを重複とみなす）
-        deduplicated_data = all_data.drop_duplicates(
-            subset=["TIME", "SENSOR_ID"], keep="first"
-        )
+        deduplicated_data = all_data.unique(subset=["TIME", "SENSOR_ID"], keep="first")
 
         # 重複削除の結果をログ出力
         duplicate_count = len(all_data) - len(deduplicated_data)
@@ -374,7 +372,7 @@ class CsvPreprocessor:
             file_name (str): ファイル名
 
         Returns:
-            pd.DataFrame: 縦持ちデータ
+            pl.DataFrame: 縦持ちデータ
         """
         if data is None:
             return None
@@ -382,53 +380,61 @@ class CsvPreprocessor:
         headers = data["headers"]
         df = data["data"]
 
-        # 結果を格納するリスト
-        rows = []
+        # 横持ちデータを縦持ちに変換するための準備
+        sensor_ids = headers["sensor_ids"]
 
-        # 各行、各センサーについて縦持ちデータを作成
-        for _, row in df.iterrows():
-            time_value = row["TIME"]
+        # 縦持ちデータの作成（高速化のためにpolarsのmelt関数を使用）
+        # まず必要な列だけを抽出
+        time_col = df.select("TIME")
 
-            for i, sensor_id in enumerate(headers["sensor_ids"]):
-                # センサー名と単位の取得
-                sensor_name = headers["sensor_names"][i]
-                sensor_unit = headers["sensor_units"][i]
+        # 結果を格納するデータフレームのリスト
+        vertical_dfs = []
 
-                # センサーの値を取得
-                try:
-                    value = row[sensor_id]
-                except:
-                    # キーが見つからない場合は列インデックスで取得を試みる
-                    try:
-                        value = row.iloc[i + 1]  # TIME列の次から
-                    except:
-                        logging.warning(f"センサー {sensor_id} の値が見つかりません")
-                        continue
+        # センサーごとに縦持ちデータを作成
+        for i, sensor_id in enumerate(sensor_ids):
+            # センサー名と単位の取得
+            sensor_name = headers["sensor_names"][i]
+            sensor_unit = headers["sensor_units"][i]
 
-                # 縦持ちデータの1行を作成
-                rows.append(
-                    {
-                        "PLANT": self.config.plant,
-                        "MACHINE_ID": self.config.machine_id,
-                        "DATA_LABEL": self.config.data_label,
-                        "TIME": time_value,
-                        "SENSOR_ID": sensor_id,
-                        "SENSOR_NAME": sensor_name,
-                        "SENSOR_UNIT": sensor_unit,
-                        "VALUE": value,
-                        "file_name": file_name,
-                    }
-                )
+            # センサーの値を含む列を抽出
+            if sensor_id in df.columns:
+                sensor_values = df.select(sensor_id).rename({sensor_id: "VALUE"})
+            else:
+                # 列名が見つからない場合はスキップ
+                logging.warning(f"センサー {sensor_id} の列が見つかりません")
+                continue
 
-        # DataFrameに変換
-        vertical_df = pd.DataFrame(rows)
+            # 時間列とセンサー値を結合
+            sensor_df = pl.concat([time_col, sensor_values], how="horizontal")
+
+            # 固定値の列を追加
+            sensor_df = sensor_df.with_columns(
+                [
+                    lit(self.config.plant).alias("PLANT"),
+                    lit(self.config.machine_id).alias("MACHINE_ID"),
+                    lit(self.config.data_label).alias("DATA_LABEL"),
+                    lit(sensor_id).alias("SENSOR_ID"),
+                    lit(sensor_name).alias("SENSOR_NAME"),
+                    lit(sensor_unit).alias("SENSOR_UNIT"),
+                    lit(file_name).alias("file_name"),
+                ]
+            )
+
+            vertical_dfs.append(sensor_df)
+
+        # すべてのセンサーデータを結合
+        if not vertical_dfs:
+            return pl.DataFrame()
+
+        vertical_df = pl.concat(vertical_dfs)
+
         return vertical_df
 
     def _save_processed_data(self, data, output_path):
         """処理済みデータを保存する
 
         Args:
-            data (pd.DataFrame): 処理済みデータ
+            data (pl.DataFrame): 処理済みデータ
             output_path (Path): 出力先パス
 
         Returns:
@@ -439,7 +445,7 @@ class CsvPreprocessor:
             parquet_path = output_path.with_suffix(".parquet")
 
             # Parquetファイルとして保存（圧縮オプションも指定）
-            data.to_parquet(parquet_path, compression="snappy")
+            data.write_parquet(parquet_path, compression="snappy")
             logging.info(f"Parquetファイルとして保存しました: {parquet_path}")
             return True
         except Exception as e:
