@@ -417,18 +417,77 @@ class CsvPreprocessor:
         # 重複を削除（TIME, SENSOR_IDが同じデータを重複とみなす）
         if total_records > 0:
             try:
-                # データベース上で重複を削除するクエリを実行
-                logging.info("重複データの削除を開始します...")
-                dedupe_query = f"""
-                CREATE TABLE {table_name}_temp AS 
-                SELECT * FROM (
-                    SELECT *, ROW_NUMBER() OVER (PARTITION BY TIME, SENSOR_ID ORDER BY TIME) as rn 
-                    FROM {table_name}
-                ) WHERE rn = 1;
-                DROP TABLE {table_name};
-                ALTER TABLE {table_name}_temp RENAME TO {table_name};
-                """
-                db_manager.execute_query(dedupe_query)
+                # データベース上で重複を削除するクエリを実行（日付ごとに分割処理）
+                logging.info("重複データの削除を開始します（日付ごとの分割処理）...")
+                try:
+                    # まず空の一時テーブルを作成
+                    db_manager.execute_query(
+                        f"CREATE TABLE {table_name}_temp AS SELECT * FROM {table_name} WHERE 1=0"
+                    )
+
+                    # 日付の一覧を取得
+                    date_query = f"SELECT DISTINCT DATE_TRUNC('day', TIME) as date_day FROM {table_name} ORDER BY date_day"
+                    date_result = db_manager.execute_query(date_query)
+
+                    if date_result:
+                        dates = date_result.fetchall()
+                        total_dates = len(dates)
+                        logging.info(f"処理対象の日付数: {total_dates}日")
+
+                        for i, date in enumerate(dates):
+                            date_str = date[0]
+                            logging.info(
+                                f"日付 {i + 1}/{total_dates} の処理中: {date_str}"
+                            )
+
+                            # 1日分のデータから重複を除外して一時テーブルに挿入
+                            batch_query = f"""
+                            INSERT INTO {table_name}_temp 
+                            SELECT * FROM (
+                                SELECT *, ROW_NUMBER() OVER (PARTITION BY TIME, SENSOR_ID ORDER BY TIME) as rn 
+                                FROM {table_name}
+                                WHERE DATE_TRUNC('day', TIME) = '{date_str}'
+                            ) WHERE rn = 1
+                            """
+                            db_manager.execute_query(batch_query)
+
+                            # 処理済みの日付のデータを削除して一時ディレクトリの使用量を減らす
+                            db_manager.execute_query(
+                                f"DELETE FROM {table_name} WHERE DATE_TRUNC('day', TIME) = '{date_str}'"
+                            )
+
+                            # 各バッチ後にガベージコレクションを実行
+                            db_manager.execute_query("PRAGMA force_checkpoint")
+
+                            # メモリ解放
+                            import gc
+
+                            gc.collect()
+
+                        # 元のテーブルを削除して一時テーブルの名前を変更
+                        db_manager.execute_query(f"DROP TABLE {table_name}")
+                        db_manager.execute_query(
+                            f"ALTER TABLE {table_name}_temp RENAME TO {table_name}"
+                        )
+
+                        # 処理後のレコード数を取得
+                        count_query = f"SELECT COUNT(*) FROM {table_name}"
+                        result = db_manager.execute_query(count_query)
+                        if result:
+                            final_count = result.fetchone()[0]
+                            duplicate_count = total_records - final_count
+                            if duplicate_count > 0:
+                                logging.info(
+                                    f"重複データを {duplicate_count} 件削除しました。"
+                                )
+                            total_records = final_count
+                    else:
+                        logging.warning(
+                            "日付データの取得に失敗しました。重複削除をスキップします。"
+                        )
+                except Exception as e:
+                    logging.error(f"重複削除中にエラーが発生しました: {str(e)}")
+                    logging.error(f"エラー詳細: {type(e).__name__}")
 
                 # 重複削除後のレコード数を取得
                 count_query = f"SELECT COUNT(*) FROM {table_name}"
