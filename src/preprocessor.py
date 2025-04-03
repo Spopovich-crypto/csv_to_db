@@ -5,6 +5,7 @@ import io
 import json
 import logging
 import os
+import zipfile
 from pathlib import Path
 
 import pandas as pd
@@ -71,9 +72,73 @@ class CsvPreprocessor:
                 data = self._read_special_csv(file_path)
             else:  # zip
                 # ZIPファイル内のCSVを読み込む処理
-                # 実装は省略（file_finderモジュールと連携して実装）
-                logging.warning(f"ZIPファイル内のCSV処理は未実装です: {file_path}")
-                return None
+                zip_path = file_info["zip_path"]
+                file_in_zip = file_info["file_in_zip"]
+
+                try:
+                    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                        with zip_ref.open(file_in_zip) as f:
+                            # CSVデータを読み込む
+                            content = io.TextIOWrapper(f, encoding="utf-8").read()
+
+                            # 一時的にメモリ上で処理
+                            lines = content.splitlines()
+
+                            if len(lines) < 4:  # ヘッダー3行 + データ行1行以上
+                                logging.error(
+                                    f"ZIPファイル内のCSVファイルの行数が不足しています: {file_path}"
+                                )
+                                return None
+
+                            # ヘッダー行の処理（余分なカンマを削除）
+                            sensor_ids = [
+                                col.strip() for col in lines[0].strip().split(",")
+                            ]
+                            sensor_names = [
+                                col.strip() for col in lines[1].strip().split(",")
+                            ]
+                            sensor_units = [
+                                col.strip() for col in lines[2].strip().split(",")
+                            ]
+
+                            # データ行の処理（末尾のカンマを削除）
+                            data_lines = []
+                            for line in lines[3:]:
+                                # 末尾のカンマを削除
+                                if line.strip().endswith(","):
+                                    line = line.strip()[:-1]
+                                data_lines.append(line)
+
+                            # データフレームを作成するための準備
+                            # 1列目は日時、残りの列はセンサーID
+                            columns = ["TIME"] + sensor_ids[
+                                1:
+                            ]  # 最初の空欄をTIMEに置き換え
+
+                            # データを解析
+                            data_rows = []
+                            for line in data_lines:
+                                values = [val.strip() for val in line.split(",")]
+                                if len(values) >= len(columns):  # 列数が一致するか確認
+                                    row_data = {}
+                                    for i, col in enumerate(columns):
+                                        row_data[col] = values[i]
+                                    data_rows.append(row_data)
+
+                            # DataFrameに変換
+                            df = pd.DataFrame(data_rows)
+
+                            # ヘッダー情報を辞書として保存
+                            headers = {
+                                "sensor_ids": sensor_ids[1:],  # 最初の空欄を除外
+                                "sensor_names": sensor_names[1:],  # 最初の空欄を除外
+                                "sensor_units": sensor_units[1:],  # 最初の空欄を除外
+                            }
+
+                            data = {"headers": headers, "data": df, "format": "special"}
+                except Exception as e:
+                    logging.error(f"ZIPファイル内のCSV処理エラー {file_path}: {str(e)}")
+                    return None
 
             if data is None:
                 return None
@@ -168,14 +233,22 @@ class CsvPreprocessor:
         """ファイルのハッシュ値を計算する
 
         Args:
-            file_path (str): ファイルパス
+            file_path (str): ファイルパス（通常のファイルまたはZIPファイル内のパス）
 
         Returns:
             str: ファイルのハッシュ値
         """
         try:
-            with open(file_path, "rb") as f:
-                file_hash = hashlib.md5(f.read()).hexdigest()
+            # ZIPファイル内のファイルかどうかを確認
+            if "::" in file_path:
+                zip_path, file_in_zip = file_path.split("::", 1)
+                with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                    with zip_ref.open(file_in_zip) as f:
+                        file_hash = hashlib.md5(f.read()).hexdigest()
+            else:
+                # 通常のファイル
+                with open(file_path, "rb") as f:
+                    file_hash = hashlib.md5(f.read()).hexdigest()
             return file_hash
         except Exception as e:
             logging.error(f"ファイルハッシュ計算エラー {file_path}: {str(e)}")
