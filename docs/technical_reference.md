@@ -299,15 +299,133 @@ CSV to DBツールは、処理したデータを`sensor_data_integrated`テー�
 | SENSOR_UNIT | VARCHAR | センサー単位 |
 | file_name | VARCHAR | 元のファイル名 |
 
-## パフォーマンスに関する考慮事項
+## パフォーマンスとメモリ最適化
 
-CSV to DBツールは、以下のパフォーマンス最適化を行っています：
+CSV to DBツールは、以下のパフォーマンスとメモリ最適化を行っています：
+
+### 基本的な最適化
 
 1. **Polarsの使用**: データ処理には高速なデータフレームライブラリであるPolarsを使用しています
 2. **DuckDBの使用**: データベースには高速な組み込みSQLデータベースエンジンであるDuckDBを使用しています
 3. **Parquetファイルの使用**: 処理結果は圧縮効率と読み込み速度に優れたParquet形式で保存しています
 4. **処理済みファイルの管理**: ハッシュ値を使用して処理済みファイルを管理し、重複処理を防止しています
 5. **直接データベースへの投入**: 処理したデータを一時ファイルを経由せずに直接データベースに投入しています
+
+### メモリ使用量の最適化（バージョン2.0.0以降）
+
+バージョン2.0.0以降では、大量のデータを処理する際のメモリ使用量を削減するために、以下の最適化が実装されています：
+
+1. **バッチ処理**: CSVファイルを小さなバッチに分けて処理することで、一度にメモリに読み込むファイル数を制限します
+   ```python
+   # src/preprocessor.py
+   def process_all_files_to_db(self, csv_files, db_manager, table_name, batch_size=5):
+       """複数のCSVファイルをバッチで処理し、直接データベースに投入する"""
+       total_records = 0
+       total_batches = (len(csv_files) - 1) // batch_size + 1
+       
+       # バッチ処理
+       for i in range(0, len(csv_files), batch_size):
+           batch = csv_files[i:i+batch_size]
+           # 各バッチを処理
+           # ...
+           
+           # 各バッチ処理後にガベージコレクションを実行
+           import gc
+           gc.collect()
+   ```
+
+2. **チャンク処理**: データフレームを小さなチャンクに分割して処理することで、一度にメモリに読み込むデータ量を制限します
+   ```python
+   # src/db.py
+   def import_dataframe(self, df, table_name, if_exists="append", chunk_size=10000):
+       """Polarsデータフレームをチャンクに分けてデータベースにインポートする"""
+       # ...
+       
+       # チャンク処理
+       for i in range(0, total_rows, chunk_size):
+           end_idx = min(i + chunk_size, total_rows)
+           chunk = df.slice(i, end_idx - i)
+           
+           # チャンクを処理
+           # ...
+           
+           # チャンク処理後にメモリを解放
+           del chunk
+   ```
+
+3. **縦持ちデータ変換の最適化**: センサーデータをバッチで処理し、不要なデータを明示的に削除することで、メモリ使用量を削減します
+   ```python
+   # src/preprocessor.py
+   def _transform_to_vertical(self, data, file_name):
+       """横持ちデータを縦持ちデータに変換する（メモリ最適化版）"""
+       # ...
+       
+       # センサーごとに縦持ちデータを作成（メモリ使用量を削減するためにバッチ処理）
+       sensor_batch_size = 10  # センサーのバッチサイズ
+       
+       for i in range(0, len(sensor_ids), sensor_batch_size):
+           # センサーをバッチで処理
+           # ...
+           
+           # バッチごとにガベージコレクション
+           import gc
+           gc.collect()
+   ```
+
+4. **DuckDBのメモリ制限**: DuckDBのメモリ使用量を制限し、一時ファイルを使用するように設定することで、メモリ使用量を削減します
+   ```python
+   # src/db.py
+   def connect(self):
+       """データベースに接続する"""
+       try:
+           self.connection = duckdb.connect(str(self.db_path))
+           
+           # メモリ使用量の制限を設定（例: 4GB）
+           self.connection.execute("SET memory_limit='4GB'")
+           
+           # 一時ファイルを使用するように設定
+           self.connection.execute("SET temp_directory='./temp'")
+           # ...
+       except Exception as e:
+           # ...
+   ```
+
+### メモリ最適化設定
+
+メモリ最適化機能は、`.env`ファイルで以下の設定を調整することで制御できます：
+
+```
+# メモリ最適化設定
+BATCH_SIZE=5     # 一度に処理するCSVファイル数（小さくするとメモリ使用量が減少）
+CHUNK_SIZE=10000 # 一度に処理するデータ行数（小さくするとメモリ使用量が減少）
+```
+
+これらの設定は、`src/config.py`で読み込まれます：
+
+```python
+# src/config.py
+def __init__(self):
+    # ...
+    
+    # メモリ最適化設定
+    self.batch_size = int(os.getenv("BATCH_SIZE", "5"))
+    self.chunk_size = int(os.getenv("CHUNK_SIZE", "10000"))
+```
+
+### メモリ使用量とパフォーマンスのトレードオフ
+
+メモリ最適化設定を調整する際は、メモリ使用量と処理速度のトレードオフを考慮する必要があります：
+
+- `BATCH_SIZE`と`CHUNK_SIZE`を小さくすると、メモリ使用量は減少しますが、処理速度は遅くなる傾向があります
+- 逆に、これらの値を大きくすると、処理速度は向上しますが、メモリ使用量も増加します
+
+最適な設定は、使用するマシンのメモリ容量とCSVファイルのサイズによって異なります。以下に、異なるデータサイズに対する推奨設定を示します：
+
+| データサイズ | BATCH_SIZE | CHUNK_SIZE | 備考 |
+|------------|------------|------------|------|
+| 小（数MB以下） | 10 | 20000 | 高速処理優先 |
+| 中（数十MB） | 5 | 10000 | バランス重視 |
+| 大（数百MB以上） | 1 | 5000 | メモリ使用量優先 |
 
 ## 拡張ポイント
 

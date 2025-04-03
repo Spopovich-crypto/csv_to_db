@@ -32,6 +32,16 @@ class DatabaseManager:
         """
         try:
             self.connection = duckdb.connect(str(self.db_path))
+
+            # メモリ使用量の制限を設定（例: 4GB）
+            self.connection.execute("SET memory_limit='4GB'")
+
+            # 一時ファイルを使用するように設定
+            temp_dir = Path("./temp")
+            if not temp_dir.exists():
+                temp_dir.mkdir(parents=True, exist_ok=True)
+            self.connection.execute("SET temp_directory='./temp'")
+
             logging.info(f"データベースに接続しました: {self.db_path}")
             return True
         except Exception as e:
@@ -176,13 +186,14 @@ class DatabaseManager:
             logging.error(f"テーブル情報取得エラー: {str(e)}")
             return None
 
-    def import_dataframe(self, df, table_name, if_exists="append"):
-        """Polarsデータフレームを直接データベースにインポートする
+    def import_dataframe(self, df, table_name, if_exists="append", chunk_size=10000):
+        """Polarsデータフレームをチャンクに分けてデータベースにインポートする
 
         Args:
             df (pl.DataFrame): インポートするデータフレーム
             table_name (str): インポート先のテーブル名
             if_exists (str, optional): テーブルが存在する場合の動作。"append"または"replace"。デフォルトは"append"。
+            chunk_size (int): 一度に処理する行数。デフォルトは10000。
 
         Returns:
             bool: インポートに成功したかどうか
@@ -199,85 +210,35 @@ class DatabaseManager:
             if result and if_exists == "replace":
                 # テーブルを削除
                 self.connection.execute(f"DROP TABLE {table_name}")
+                result = []
 
-            # データフレームをDuckDBに直接インポート
-            # DuckDBはPolarsと互換性があるため、直接インポートが可能
-            if not result or if_exists == "replace":
-                # テーブルが存在しない場合、または置き換える場合は新しいテーブルを作成
-                # TIMEカラムがdatetime型の場合はTIMESTAMP型として保存
-                schema_info = df.schema
-                time_col_type = schema_info.get("TIME")
+            # データフレームの行数を取得
+            total_rows = len(df)
+            logging.info(
+                f"データフレーム（{total_rows}行）をチャンク処理でインポートします: -> {table_name}"
+            )
 
-                if time_col_type and str(time_col_type).lower() == "datetime":
-                    # TIMEカラムがdatetime型の場合、明示的にTIMESTAMP型として保存
-                    # 一時テーブルを作成してから適切な型でメインテーブルを作成
-                    self.connection.execute(
-                        f"CREATE TEMP TABLE temp_df AS SELECT * FROM df"
-                    )
+            # チャンク処理
+            for i in range(0, total_rows, chunk_size):
+                end_idx = min(i + chunk_size, total_rows)
+                chunk = df.slice(i, end_idx - i)
 
-                    # カラム定義を取得
-                    columns_info = self.connection.execute(
-                        "PRAGMA table_info(temp_df)"
-                    ).fetchall()
-                    column_defs = []
+                if i == 0 and (not result or if_exists == "replace"):
+                    # 最初のチャンクでテーブルを作成
+                    # TIMEカラムがdatetime型の場合はTIMESTAMP型として保存
+                    schema_info = chunk.schema
+                    time_col_type = schema_info.get("TIME")
 
-                    for col_info in columns_info:
-                        col_name = col_info[1]
-                        col_type = col_info[2]
-
-                        if col_name == "TIME":
-                            col_type = "TIMESTAMP"
-
-                        column_defs.append(f'"{col_name}" {col_type}')
-
-                    # 適切な型でテーブルを作成
-                    columns_str = ", ".join(column_defs)
-                    self.connection.execute(
-                        f"CREATE TABLE {table_name} ({columns_str})"
-                    )
-
-                    # データを挿入
-                    self.connection.execute(
-                        f"INSERT INTO {table_name} SELECT * FROM temp_df"
-                    )
-
-                    # 一時テーブルを削除
-                    self.connection.execute("DROP TABLE temp_df")
-                else:
-                    # 通常の方法でテーブルを作成
-                    self.connection.execute(
-                        f"CREATE TABLE {table_name} AS SELECT * FROM df"
-                    )
-            else:
-                # テーブルが存在する場合は追加
-                # TIMEカラムがdatetime型の場合、既存のテーブルのTIMEカラムの型を確認
-                schema_info = df.schema
-                time_col_type = schema_info.get("TIME")
-
-                if time_col_type and str(time_col_type).lower() == "datetime":
-                    # テーブル情報を取得
-                    table_info = self.get_table_info(table_name)
-                    time_col_info = next(
-                        (col for col in table_info if col[1] == "TIME"), None
-                    )
-
-                    if time_col_info and time_col_info[2] != "TIMESTAMP":
-                        # TIMEカラムの型がTIMESTAMPでない場合、テーブルを再作成
-                        logging.info(
-                            f"テーブル {table_name} のTIMEカラムをTIMESTAMP型に変更します"
-                        )
-
-                        # 既存のデータを一時テーブルに保存
+                    if time_col_type and str(time_col_type).lower() == "datetime":
+                        # TIMEカラムがdatetime型の場合、明示的にTIMESTAMP型として保存
+                        # 一時テーブルを作成してから適切な型でメインテーブルを作成
                         self.connection.execute(
-                            f"CREATE TEMP TABLE temp_data AS SELECT * FROM {table_name}"
+                            f"CREATE TEMP TABLE temp_df AS SELECT * FROM chunk"
                         )
 
-                        # 既存のテーブルを削除
-                        self.connection.execute(f"DROP TABLE {table_name}")
-
-                        # 新しいテーブルを作成（TIMEカラムをTIMESTAMP型に）
+                        # カラム定義を取得
                         columns_info = self.connection.execute(
-                            "PRAGMA table_info(temp_data)"
+                            "PRAGMA table_info(temp_df)"
                         ).fetchall()
                         column_defs = []
 
@@ -296,22 +257,95 @@ class DatabaseManager:
                             f"CREATE TABLE {table_name} ({columns_str})"
                         )
 
-                        # 既存のデータを挿入（TIMEカラムを適切に変換）
-                        self.connection.execute(f"""
-                            INSERT INTO {table_name}
-                            SELECT * FROM temp_data
-                        """)
+                        # データを挿入
+                        self.connection.execute(
+                            f"INSERT INTO {table_name} SELECT * FROM temp_df"
+                        )
 
                         # 一時テーブルを削除
-                        self.connection.execute("DROP TABLE temp_data")
+                        self.connection.execute("DROP TABLE temp_df")
+                    else:
+                        # 通常の方法でテーブルを作成
+                        self.connection.execute(
+                            f"CREATE TABLE {table_name} AS SELECT * FROM chunk"
+                        )
 
-                # データを挿入
-                self.connection.execute(f"INSERT INTO {table_name} SELECT * FROM df")
+                    logging.info(f"テーブル {table_name} を作成しました")
+                else:
+                    # 以降のチャンクはデータを追加
+                    # TIMEカラムがdatetime型の場合、既存のテーブルのTIMEカラムの型を確認
+                    if i == 0:  # 最初のチャンクで一度だけ確認
+                        schema_info = chunk.schema
+                        time_col_type = schema_info.get("TIME")
+
+                        if time_col_type and str(time_col_type).lower() == "datetime":
+                            # テーブル情報を取得
+                            table_info = self.get_table_info(table_name)
+                            time_col_info = next(
+                                (col for col in table_info if col[1] == "TIME"), None
+                            )
+
+                            if time_col_info and time_col_info[2] != "TIMESTAMP":
+                                # TIMEカラムの型がTIMESTAMPでない場合、テーブルを再作成
+                                logging.info(
+                                    f"テーブル {table_name} のTIMEカラムをTIMESTAMP型に変更します"
+                                )
+
+                                # 既存のデータを一時テーブルに保存
+                                self.connection.execute(
+                                    f"CREATE TEMP TABLE temp_data AS SELECT * FROM {table_name}"
+                                )
+
+                                # 既存のテーブルを削除
+                                self.connection.execute(f"DROP TABLE {table_name}")
+
+                                # 新しいテーブルを作成（TIMEカラムをTIMESTAMP型に）
+                                columns_info = self.connection.execute(
+                                    "PRAGMA table_info(temp_data)"
+                                ).fetchall()
+                                column_defs = []
+
+                                for col_info in columns_info:
+                                    col_name = col_info[1]
+                                    col_type = col_info[2]
+
+                                    if col_name == "TIME":
+                                        col_type = "TIMESTAMP"
+
+                                    column_defs.append(f'"{col_name}" {col_type}')
+
+                                # 適切な型でテーブルを作成
+                                columns_str = ", ".join(column_defs)
+                                self.connection.execute(
+                                    f"CREATE TABLE {table_name} ({columns_str})"
+                                )
+
+                                # 既存のデータを挿入（TIMEカラムを適切に変換）
+                                self.connection.execute(f"""
+                                    INSERT INTO {table_name}
+                                    SELECT * FROM temp_data
+                                """)
+
+                                # 一時テーブルを削除
+                                self.connection.execute("DROP TABLE temp_data")
+
+                    # データを挿入
+                    self.connection.execute(
+                        f"INSERT INTO {table_name} SELECT * FROM chunk"
+                    )
+
+                logging.info(
+                    f"チャンク処理: {i + 1}～{end_idx}/{total_rows}行 ({((end_idx) / (total_rows)) * 100:.1f}%)"
+                )
+
+                # チャンク処理後にメモリを解放
+                del chunk
 
             logging.info(
-                f"データフレームをインポートしました: {len(df)}行 -> {table_name}"
+                f"データフレームのインポートが完了しました: {total_rows}行 -> {table_name}"
             )
             return True
         except Exception as e:
             logging.error(f"データフレームインポートエラー: {str(e)}")
+            logging.error(f"エラー詳細: {type(e).__name__}")
             return False

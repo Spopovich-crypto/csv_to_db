@@ -364,32 +364,53 @@ class CsvPreprocessor:
 
         return deduplicated_data
 
-    def process_all_files_to_db(self, csv_files, db_manager, table_name):
-        """複数のCSVファイルを処理し、直接データベースに投入する
+    def process_all_files_to_db(self, csv_files, db_manager, table_name, batch_size=5):
+        """複数のCSVファイルをバッチで処理し、直接データベースに投入する
 
         Args:
             csv_files (list): CSVファイル情報のリスト
             db_manager (DatabaseManager): データベース管理オブジェクト
             table_name (str): インポート先のテーブル名
+            batch_size (int): 一度に処理するファイル数。デフォルトは5。
 
         Returns:
             int: 処理されたレコード数
         """
-        # 各ファイルの処理結果を格納するリスト
-        processed_results = []
         total_records = 0
+        total_batches = (len(csv_files) - 1) // batch_size + 1
 
-        # 各ファイルを処理
-        for file_info in csv_files:
-            result = self.process_file(file_info)
-            if result is not None:
-                processed_results.append(result)
+        # バッチ処理
+        for i in range(0, len(csv_files), batch_size):
+            batch = csv_files[i : i + batch_size]
+            current_batch = i // batch_size + 1
+            logging.info(
+                f"バッチ処理開始: {current_batch}/{total_batches} (ファイル {i + 1}～{min(i + batch_size, len(csv_files))})"
+            )
 
-                # 処理したデータを直接DBに投入
-                if db_manager.import_dataframe(result["data"], table_name):
-                    total_records += len(result["data"])
+            batch_records = 0
+            # 各ファイルを処理
+            for file_info in batch:
+                result = self.process_file(file_info)
+                if result is not None:
+                    # 処理したデータを直接DBに投入
+                    if db_manager.import_dataframe(result["data"], table_name):
+                        batch_records += len(result["data"])
+                        total_records += len(result["data"])
 
-        if not processed_results:
+                    # メモリ解放のために明示的に削除
+                    del result["data"]
+                    result.clear()
+
+            logging.info(
+                f"バッチ処理完了: {current_batch}/{total_batches} - {batch_records}レコード処理"
+            )
+
+            # 各バッチ処理後にガベージコレクションを実行
+            import gc
+
+            gc.collect()
+
+        if total_records == 0:
             logging.info("処理対象のCSVファイルがありませんでした。")
             return 0
 
@@ -397,6 +418,7 @@ class CsvPreprocessor:
         if total_records > 0:
             try:
                 # データベース上で重複を削除するクエリを実行
+                logging.info("重複データの削除を開始します...")
                 dedupe_query = f"""
                 CREATE TABLE {table_name}_temp AS 
                 SELECT * FROM (
@@ -419,11 +441,12 @@ class CsvPreprocessor:
                     total_records = final_count
             except Exception as e:
                 logging.error(f"重複削除中にエラーが発生しました: {str(e)}")
+                logging.error(f"エラー詳細: {type(e).__name__}")
 
         return total_records
 
     def _transform_to_vertical(self, data, file_name):
-        """横持ちデータを縦持ちデータに変換する
+        """横持ちデータを縦持ちデータに変換する（メモリ最適化版）
 
         Args:
             data (dict): 読み込んだデータ（ヘッダー情報とデータフレーム）
@@ -441,8 +464,6 @@ class CsvPreprocessor:
         # 横持ちデータを縦持ちに変換するための準備
         sensor_ids = headers["sensor_ids"]
 
-        # 縦持ちデータの作成（高速化のためにpolarsのmelt関数を使用）
-        # まず必要な列だけを抽出
         # TIMEカラムをdatetime型に変換
         try:
             time_col = df.select("TIME").with_columns(
@@ -463,43 +484,78 @@ class CsvPreprocessor:
         # 結果を格納するデータフレームのリスト
         vertical_dfs = []
 
-        # センサーごとに縦持ちデータを作成
-        for i, sensor_id in enumerate(sensor_ids):
-            # センサー名と単位の取得
-            sensor_name = headers["sensor_names"][i]
-            sensor_unit = headers["sensor_units"][i]
+        # センサーごとに縦持ちデータを作成（メモリ使用量を削減するためにバッチ処理）
+        sensor_batch_size = 10  # センサーのバッチサイズ
 
-            # センサーの値を含む列を抽出
-            if sensor_id in df.columns:
-                sensor_values = df.select(sensor_id).rename({sensor_id: "VALUE"})
-            else:
-                # 列名が見つからない場合はスキップ
-                logging.warning(f"センサー {sensor_id} の列が見つかりません")
-                continue
+        for i in range(0, len(sensor_ids), sensor_batch_size):
+            batch_sensor_ids = sensor_ids[i : i + sensor_batch_size]
+            batch_dfs = []
 
-            # 時間列とセンサー値を結合
-            sensor_df = pl.concat([time_col, sensor_values], how="horizontal")
+            for j, sensor_id in enumerate(batch_sensor_ids):
+                # センサー名と単位の取得
+                sensor_idx = i + j
+                if sensor_idx < len(headers["sensor_names"]) and sensor_idx < len(
+                    headers["sensor_units"]
+                ):
+                    sensor_name = headers["sensor_names"][sensor_idx]
+                    sensor_unit = headers["sensor_units"][sensor_idx]
+                else:
+                    # インデックスが範囲外の場合はスキップ
+                    logging.warning(
+                        f"センサー {sensor_id} のメタデータが見つかりません"
+                    )
+                    continue
 
-            # 固定値の列を追加
-            sensor_df = sensor_df.with_columns(
-                [
-                    lit(self.config.plant).alias("PLANT"),
-                    lit(self.config.machine_id).alias("MACHINE_ID"),
-                    lit(self.config.data_label).alias("DATA_LABEL"),
-                    lit(sensor_id).alias("SENSOR_ID"),
-                    lit(sensor_name).alias("SENSOR_NAME"),
-                    lit(sensor_unit).alias("SENSOR_UNIT"),
-                    lit(file_name).alias("file_name"),
-                ]
-            )
+                # センサーの値を含む列を抽出
+                if sensor_id in df.columns:
+                    sensor_values = df.select(sensor_id).rename({sensor_id: "VALUE"})
+                else:
+                    # 列名が見つからない場合はスキップ
+                    logging.warning(f"センサー {sensor_id} の列が見つかりません")
+                    continue
 
-            vertical_dfs.append(sensor_df)
+                # 時間列とセンサー値を結合
+                sensor_df = pl.concat([time_col, sensor_values], how="horizontal")
+
+                # 固定値の列を追加
+                sensor_df = sensor_df.with_columns(
+                    [
+                        lit(self.config.plant).alias("PLANT"),
+                        lit(self.config.machine_id).alias("MACHINE_ID"),
+                        lit(self.config.data_label).alias("DATA_LABEL"),
+                        lit(sensor_id).alias("SENSOR_ID"),
+                        lit(sensor_name).alias("SENSOR_NAME"),
+                        lit(sensor_unit).alias("SENSOR_UNIT"),
+                        lit(file_name).alias("file_name"),
+                    ]
+                )
+
+                batch_dfs.append(sensor_df)
+
+                # メモリ解放
+                del sensor_values
+
+            # バッチ内のデータフレームを結合
+            if batch_dfs:
+                batch_df = pl.concat(batch_dfs)
+                vertical_dfs.append(batch_df)
+
+                # メモリ解放
+                del batch_dfs
+
+            # バッチごとにガベージコレクション
+            import gc
+
+            gc.collect()
 
         # すべてのセンサーデータを結合
         if not vertical_dfs:
             return pl.DataFrame()
 
         vertical_df = pl.concat(vertical_dfs)
+
+        # メモリ解放
+        del vertical_dfs
 
         return vertical_df
 

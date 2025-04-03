@@ -24,6 +24,10 @@ class Config:
         self.machine_id = os.getenv("MACHINE_ID", "")
         self.data_label = os.getenv("DATA_LABEL", "")
 
+        # メモリ最適化設定
+        self.batch_size = int(os.getenv("BATCH_SIZE", "5"))
+        self.chunk_size = int(os.getenv("CHUNK_SIZE", "10000"))
+
     def validate(self):
         """設定値を検証する
 

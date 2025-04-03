@@ -56,7 +56,7 @@ def main():
 
     # CSVファイルを処理して直接DBに投入
     total_records = preprocessor.process_all_files_to_db(
-        csv_files, db_manager, table_name
+        csv_files, db_manager, table_name, batch_size=config.batch_size
     )
 
     # 処理時間の計測終了
