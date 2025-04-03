@@ -52,9 +52,9 @@ def main():
     db_manager = DatabaseManager(config.db, config.encoding)
     if db_manager.connect():
         # 将来的な実装: 統合データをデータベースに取り込む
-        # integrated_path = Path(preprocessor_config.output_dir) / "integrated_data.csv"
+        # integrated_path = Path(preprocessor_config.output_dir) / "integrated_data.parquet"
         # table_name = "sensor_data_integrated"
-        # db_manager.import_csv(str(integrated_path), table_name)
+        # db_manager.import_parquet(str(integrated_path), table_name)
 
         db_manager.close()
         logging.info("データベースへの取り込みが完了しました。")

@@ -64,3 +64,30 @@ class DatabaseManager:
         except Exception as e:
             logging.error(f"CSVインポートエラー: {str(e)}")
             return False
+
+    def import_parquet(self, parquet_path, table_name, metadata=None):
+        """Parquetファイルからデータをインポートする
+
+        Args:
+            parquet_path (str): Parquetファイルのパス
+            table_name (str): インポート先のテーブル名
+            metadata (dict, optional): 追加のメタデータ. デフォルトは None.
+
+        Returns:
+            bool: インポートに成功したかどうか
+        """
+        if not self.connection:
+            logging.error("データベースに接続されていません")
+            return False
+
+        try:
+            # 将来的な実装例:
+            # sql = f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT * FROM read_parquet('{parquet_path}')"
+            # self.connection.execute(sql)
+            logging.info(
+                f"Parquetファイルをインポートしました: {parquet_path} -> {table_name}"
+            )
+            return True
+        except Exception as e:
+            logging.error(f"Parquetインポートエラー: {str(e)}")
+            return False

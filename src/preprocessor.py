@@ -358,9 +358,11 @@ class CsvPreprocessor:
             logging.info(f"重複データを {duplicate_count} 件削除しました。")
 
         # 統合データを保存
-        integrated_path = Path(self.config.output_dir) / "integrated_data.csv"
+        integrated_path = Path(self.config.output_dir) / "integrated_data"
         self._save_processed_data(deduplicated_data, integrated_path)
-        logging.info(f"統合データを保存しました: {integrated_path}")
+        logging.info(
+            f"統合データを保存しました: {integrated_path.with_suffix('.parquet')}"
+        )
 
         return deduplicated_data
 
@@ -433,8 +435,12 @@ class CsvPreprocessor:
             bool: 保存に成功したかどうか
         """
         try:
-            # CSVファイルとして保存
-            data.to_csv(output_path, index=False, encoding="utf-8")
+            # 出力パスの拡張子を.parquetに変更
+            parquet_path = output_path.with_suffix(".parquet")
+
+            # Parquetファイルとして保存（圧縮オプションも指定）
+            data.to_parquet(parquet_path, compression="snappy")
+            logging.info(f"Parquetファイルとして保存しました: {parquet_path}")
             return True
         except Exception as e:
             logging.error(f"データ保存エラー {output_path}: {str(e)}")
