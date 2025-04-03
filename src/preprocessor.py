@@ -153,16 +153,10 @@ class CsvPreprocessor:
             # 縦持ちデータに変換
             vertical_data = self._transform_to_vertical(data, file_name)
 
-            # 個別ファイルの処理結果を保存（オプション）
-            output_path = Path(self.config.output_dir) / f"processed_{file_name}"
-            self._save_processed_data(vertical_data, output_path)
-
             # 処理済みとしてマーク
             self._mark_as_processed(file_path)
 
-            logging.info(
-                f"ファイルの前処理が完了しました: {file_path} -> {output_path}"
-            )
+            logging.info(f"ファイルの前処理が完了しました: {file_path}")
 
             # 処理結果を返す（統合処理のため）
             return {
@@ -354,13 +348,6 @@ class CsvPreprocessor:
         duplicate_count = len(all_data) - len(deduplicated_data)
         if duplicate_count > 0:
             logging.info(f"重複データを {duplicate_count} 件削除しました。")
-
-        # 統合データを保存
-        integrated_path = Path(self.config.output_dir) / "integrated_data"
-        self._save_processed_data(deduplicated_data, integrated_path)
-        logging.info(
-            f"統合データを保存しました: {integrated_path.with_suffix('.parquet')}"
-        )
 
         return deduplicated_data
 
