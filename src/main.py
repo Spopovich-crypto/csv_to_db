@@ -1,5 +1,6 @@
 """CSVファイル検索、前処理、データベース取り込みのメインモジュール"""
 
+import argparse
 import logging
 import time
 from pathlib import Path
@@ -11,13 +12,53 @@ from src.logger import log_csv_files, log_search_start, setup_logger
 from src.preprocessor import CsvPreprocessor, PreprocessorConfig
 
 
+def parse_args():
+    """コマンドライン引数を解析する
+
+    Returns:
+        argparse.Namespace: 解析されたコマンドライン引数
+    """
+    parser = argparse.ArgumentParser(
+        description="CSVファイルをデータベースに取り込むツール"
+    )
+
+    # データ取り込み用設定
+    parser.add_argument("--folder", help="処理対象のフォルダパス")
+    parser.add_argument("--pattern", help="CSVファイル検索パターン")
+    parser.add_argument("--db", help="データベースファイルのパス")
+    parser.add_argument("--encoding", help="CSVファイルのエンコーディング")
+    parser.add_argument("--plant", help="プラント名")
+    parser.add_argument("--machine-id", dest="machine_id", help="機器ID")
+    parser.add_argument("--data-label", dest="data_label", help="データラベル")
+
+    # メモリ最適化設定
+    parser.add_argument(
+        "--batch-size", dest="batch_size", type=int, help="バッチサイズ"
+    )
+    parser.add_argument(
+        "--chunk-size", dest="chunk_size", type=int, help="チャンクサイズ"
+    )
+
+    # DuckDB設定
+    parser.add_argument(
+        "--max-temp-directory-size",
+        dest="max_temp_directory_size",
+        help="DuckDBの一時ディレクトリの最大サイズ",
+    )
+
+    return parser.parse_args()
+
+
 def main():
     """メイン実行関数"""
     # ロガーの設定
     setup_logger()
 
-    # 設定の読み込みと検証
-    config = Config()
+    # コマンドライン引数の解析
+    args = parse_args()
+
+    # 設定の読み込みと検証（コマンドライン引数を渡す）
+    config = Config(args)
     config.log_settings()
 
     if not config.validate():

@@ -82,6 +82,59 @@ uv run main.py
 python main.py
 ```
 
+### コマンドライン引数の使用
+
+バージョン2.1.0以降では、`.env`ファイルの設定値をコマンドライン引数で上書きすることができます。コマンドライン引数で指定された値は、`.env`ファイルの値よりも優先されます。
+
+```bash
+python main.py --folder data/new_folder --pattern "Test.*" --db custom_db.duckdb
+```
+
+#### 利用可能なコマンドライン引数
+
+| 引数 | 説明 | 対応する環境変数 |
+|------|------|----------------|
+| `--folder` | 処理対象のフォルダパス | `FOLDER` |
+| `--pattern` | CSVファイル検索パターン | `PATTERN` |
+| `--db` | データベースファイルのパス | `DB` |
+| `--encoding` | CSVファイルのエンコーディング | `ENCODING` |
+| `--plant` | プラント名 | `PLANT` |
+| `--machine-id` | 機器ID | `MACHINE_ID` |
+| `--data-label` | データラベル | `DATA_LABEL` |
+| `--batch-size` | バッチサイズ | `BATCH_SIZE` |
+| `--chunk-size` | チャンクサイズ | `CHUNK_SIZE` |
+| `--max-temp-directory-size` | DuckDBの一時ディレクトリの最大サイズ | `MAX_TEMP_DIRECTORY_SIZE` |
+
+コマンドライン引数のヘルプを表示するには：
+
+```bash
+python main.py --help
+```
+
+#### 使用例
+
+1. 異なるフォルダのデータを処理する：
+   ```bash
+   python main.py --folder backup/data
+   ```
+
+2. 異なるパターンでファイルを検索する：
+   ```bash
+   python main.py --pattern "Sensor.*"
+   ```
+
+3. 複数の設定を変更する：
+   ```bash
+   python main.py --folder test_data --pattern ".*\.csv" --plant "BBB" --machine-id "No.2"
+   ```
+
+4. メモリ最適化設定を変更する：
+   ```bash
+   python main.py --batch-size 1 --chunk-size 5000
+   ```
+
+コマンドライン引数で指定されなかった設定値は、`.env`ファイルから読み込まれます。
+
 ### 4. 実行結果の確認
 
 ツールの実行結果は、コンソールに表示されるログメッセージで確認できます。また、以下の場所に処理結果が保存されます：
@@ -211,6 +264,59 @@ conn.close()
 | 小（数MB以下） | 10 | 20000 | 高速処理優先 |
 | 中（数十MB） | 5 | 10000 | バランス重視 |
 | 大（数百MB以上） | 1 | 5000 | メモリ使用量優先 |
+
+## コマンドライン引数
+
+バージョン2.1.0以降では、`.env`ファイルの設定値をコマンドライン引数で上書きすることができます。コマンドライン引数で指定された値は、`.env`ファイルの値よりも優先されます。
+
+```bash
+python main.py --folder data/new_folder --pattern "Test.*" --db custom_db.duckdb
+```
+
+### 利用可能なコマンドライン引数
+
+| 引数 | 説明 | 対応する環境変数 |
+|------|------|----------------|
+| `--folder` | 処理対象のフォルダパス | `FOLDER` |
+| `--pattern` | CSVファイル検索パターン | `PATTERN` |
+| `--db` | データベースファイルのパス | `DB` |
+| `--encoding` | CSVファイルのエンコーディング | `ENCODING` |
+| `--plant` | プラント名 | `PLANT` |
+| `--machine-id` | 機器ID | `MACHINE_ID` |
+| `--data-label` | データラベル | `DATA_LABEL` |
+| `--batch-size` | バッチサイズ | `BATCH_SIZE` |
+| `--chunk-size` | チャンクサイズ | `CHUNK_SIZE` |
+| `--max-temp-directory-size` | DuckDBの一時ディレクトリの最大サイズ | `MAX_TEMP_DIRECTORY_SIZE` |
+
+コマンドライン引数のヘルプを表示するには：
+
+```bash
+python main.py --help
+```
+
+### 使用例
+
+1. 異なるフォルダのデータを処理する：
+   ```bash
+   python main.py --folder backup/data
+   ```
+
+2. 異なるパターンでファイルを検索する：
+   ```bash
+   python main.py --pattern "Sensor.*"
+   ```
+
+3. 複数の設定を変更する：
+   ```bash
+   python main.py --folder test_data --pattern ".*\.csv" --plant "BBB" --machine-id "No.2"
+   ```
+
+4. メモリ最適化設定を変更する：
+   ```bash
+   python main.py --batch-size 1 --chunk-size 5000
+   ```
+
+コマンドライン引数で指定されなかった設定値は、`.env`ファイルから読み込まれます。
 
 ## 次のステップ
 

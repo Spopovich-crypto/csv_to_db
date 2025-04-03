@@ -156,7 +156,7 @@ def main():
 
 ### 設定管理 (`src/config.py`)
 
-設定管理モジュールは、環境変数から設定を読み込み、検証するコンポーネントです。以下の設定項目を管理します：
+設定管理モジュールは、環境変数とコマンドライン引数から設定を読み込み、検証するコンポーネントです。以下の設定項目を管理します：
 
 - `FOLDER`: 検索対象のフォルダパス（必須）
 - `PATTERN`: CSVファイル名の検索パターン（必須）
@@ -165,31 +165,47 @@ def main():
 - `PLANT`: プラント名（デフォルト: `""`）
 - `MACHINE_ID`: 機械ID（デフォルト: `""`）
 - `DATA_LABEL`: データラベル（デフォルト: `""`）
+- `BATCH_SIZE`: 一度に処理するCSVファイル数（デフォルト: `5`）
+- `CHUNK_SIZE`: 一度に処理するデータ行数（デフォルト: `10000`）
+- `MAX_TEMP_DIRECTORY_SIZE`: DuckDBの一時ディレクトリの最大サイズ（デフォルト: `20GB`）
 
 ```python
 class Config:
     """アプリケーション設定を管理するクラス"""
 
-    def __init__(self):
-        """環境変数から設定を読み込む"""
+    def __init__(self, cli_args=None):
+        """環境変数とコマンドライン引数から設定を読み込む
+        
+        Args:
+            cli_args: コマンドライン引数（Namespaceオブジェクト）
+        """
         # .envファイルを強制的に再読み込み
         load_dotenv(override=True)
 
-        # 必須の環境変数
-        self.folder = os.getenv("FOLDER")
-        self.pattern = os.getenv("PATTERN")
+        # 必須の環境変数（コマンドライン引数を優先）
+        self.folder = getattr(cli_args, "folder", None) or os.getenv("FOLDER")
+        self.pattern = getattr(cli_args, "pattern", None) or os.getenv("PATTERN")
 
-        # オプションの環境変数（デフォルト値付き）
-        self.db = os.getenv("DB", "sensor_data.duckdb")
-        self.encoding = os.getenv("ENCODING", "utf-8")
-        self.plant = os.getenv("PLANT", "")
-        self.machine_id = os.getenv("MACHINE_ID", "")
-        self.data_label = os.getenv("DATA_LABEL", "")
+        # オプションの環境変数（デフォルト値付き、コマンドライン引数を優先）
+        self.db = getattr(cli_args, "db", None) or os.getenv("DB", "sensor_data.duckdb")
+        self.encoding = getattr(cli_args, "encoding", None) or os.getenv("ENCODING", "utf-8")
+        self.plant = getattr(cli_args, "plant", None) or os.getenv("PLANT", "")
+        self.machine_id = getattr(cli_args, "machine_id", None) or os.getenv("MACHINE_ID", "")
+        self.data_label = getattr(cli_args, "data_label", None) or os.getenv("DATA_LABEL", "")
+
+        # メモリ最適化設定（コマンドライン引数を優先）
+        batch_size_str = getattr(cli_args, "batch_size", None) or os.getenv("BATCH_SIZE", "5")
+        chunk_size_str = getattr(cli_args, "chunk_size", None) or os.getenv("CHUNK_SIZE", "10000")
+        self.batch_size = int(batch_size_str)
+        self.chunk_size = int(chunk_size_str)
+
+        # DuckDB設定（コマンドライン引数を優先）
+        self.max_temp_directory_size = getattr(cli_args, "max_temp_directory_size", None) or os.getenv("MAX_TEMP_DIRECTORY_SIZE", "20GB")
 
     def validate(self):
         """設定値を検証する"""
         if not self.folder or not self.pattern:
-            logging.error(".envファイルにFOLDERまたはPATTERNが設定されていません。")
+            logging.error(".envファイルまたはコマンドライン引数にFOLDERまたはPATTERNが設定されていません。")
             return False
 
         # フォルダの存在確認
@@ -199,6 +215,57 @@ class Config:
             return False
 
         return True
+```
+
+### コマンドライン引数の処理 (`src/main.py`)
+
+バージョン2.1.0以降では、コマンドライン引数を解析するための`parse_args`関数が追加されました。この関数は、`.env`ファイルの全ての設定項目に対応するコマンドライン引数を定義し、解析します。
+
+```python
+def parse_args():
+    """コマンドライン引数を解析する
+
+    Returns:
+        argparse.Namespace: 解析されたコマンドライン引数
+    """
+    parser = argparse.ArgumentParser(description="CSVファイルをデータベースに取り込むツール")
+    
+    # データ取り込み用設定
+    parser.add_argument("--folder", help="処理対象のフォルダパス")
+    parser.add_argument("--pattern", help="CSVファイル検索パターン")
+    parser.add_argument("--db", help="データベースファイルのパス")
+    parser.add_argument("--encoding", help="CSVファイルのエンコーディング")
+    parser.add_argument("--plant", help="プラント名")
+    parser.add_argument("--machine-id", dest="machine_id", help="機器ID")
+    parser.add_argument("--data-label", dest="data_label", help="データラベル")
+    
+    # メモリ最適化設定
+    parser.add_argument("--batch-size", dest="batch_size", type=int, help="バッチサイズ")
+    parser.add_argument("--chunk-size", dest="chunk_size", type=int, help="チャンクサイズ")
+    
+    # DuckDB設定
+    parser.add_argument("--max-temp-directory-size", dest="max_temp_directory_size", help="DuckDBの一時ディレクトリの最大サイズ")
+    
+    return parser.parse_args()
+```
+
+メイン関数では、`parse_args`関数を呼び出して解析したコマンドライン引数を`Config`クラスのコンストラクタに渡します：
+
+```python
+def main():
+    """メイン実行関数"""
+    # ロガーの設定
+    setup_logger()
+
+    # コマンドライン引数の解析
+    args = parse_args()
+
+    # 設定の読み込みと検証（コマンドライン引数を渡す）
+    config = Config(args)
+    config.log_settings()
+    
+    # 以下は既存のコードと同じ
+    # ...
 ```
 
 ### ファイル検索 (`src/file_finder.py`)
