@@ -87,7 +87,7 @@ def main():
                 if file_info["type"] == "file":
                     print(f"{i}. {Path(file_info['path']).name}")
                 else:  # zip
-                    print(f"{i}. {file_info['path']} (ZIPファイル内)")
+                    print(f"{i}. {Path(file_info['path']).name} (ZIPファイル内)")
         else:
             print("\n条件に一致するCSVファイルは見つかりませんでした。")
     else:
