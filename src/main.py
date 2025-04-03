@@ -60,10 +60,41 @@ def main():
     logging.info("データベースへの取り込みを開始します...")
     db_manager = DatabaseManager(config.db, config.encoding)
     if db_manager.connect():
-        # 将来的な実装: 統合データをデータベースに取り込む
-        # integrated_path = Path(preprocessor_config.output_dir) / "integrated_data.parquet"
-        # table_name = "sensor_data_integrated"
-        # db_manager.import_parquet(str(integrated_path), table_name)
+        # 統合データをデータベースに取り込む
+        integrated_path = (
+            Path(preprocessor_config.output_dir) / "integrated_data.parquet"
+        )
+        table_name = "sensor_data_integrated"
+
+        # テーブルスキーマの定義（必要に応じて）
+        # schema = """
+        #     TIME TEXT,
+        #     PLANT TEXT,
+        #     MACHINE_ID TEXT,
+        #     DATA_LABEL TEXT,
+        #     SENSOR_ID TEXT,
+        #     SENSOR_NAME TEXT,
+        #     SENSOR_UNIT TEXT,
+        #     VALUE TEXT,
+        #     file_name TEXT
+        # """
+        # db_manager.create_table_if_not_exists(table_name, schema)
+
+        # Parquetファイルからデータをインポート
+        if db_manager.import_parquet(str(integrated_path), table_name):
+            # テーブル情報を表示
+            table_info = db_manager.get_table_info(table_name)
+            if table_info:
+                logging.info(f"テーブル {table_name} の構造:")
+                for col in table_info:
+                    logging.info(f"  {col[1]} ({col[2]})")
+
+                # レコード数を取得
+                count_query = f"SELECT COUNT(*) FROM {table_name}"
+                result = db_manager.execute_query(count_query)
+                if result:
+                    count = result.fetchone()[0]
+                    logging.info(f"インポートされたレコード数: {count}")
 
         db_manager.close()
         logging.info("データベースへの取り込みが完了しました。")

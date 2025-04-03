@@ -10,8 +10,8 @@ class Config:
 
     def __init__(self):
         """環境変数から設定を読み込む"""
-        # .envファイルを読み込む
-        load_dotenv()
+        # .envファイルを強制的に再読み込み
+        load_dotenv(override=True)
 
         # 必須の環境変数
         self.folder = os.getenv("FOLDER")
