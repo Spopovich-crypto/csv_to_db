@@ -8,15 +8,17 @@ import duckdb
 class DatabaseManager:
     """データベース操作を管理するクラス"""
 
-    def __init__(self, db_path, encoding="utf-8"):
+    def __init__(self, db_path, config=None, encoding="utf-8"):
         """データベースマネージャーを初期化する
 
         Args:
             db_path (str): データベースファイルのパス
+            config (Config, optional): 設定オブジェクト. デフォルトはNone.
             encoding (str, optional): 使用するエンコーディング. デフォルトは "utf-8".
         """
         self.db_path = Path(db_path)
         self.encoding = encoding
+        self.config = config
         self.connection = None
 
         # データベースディレクトリが存在しない場合は作成
@@ -41,6 +43,15 @@ class DatabaseManager:
             if not temp_dir.exists():
                 temp_dir.mkdir(parents=True, exist_ok=True)
             self.connection.execute("SET temp_directory='./temp'")
+
+            # 一時ディレクトリのサイズ制限を設定
+            if self.config and hasattr(self.config, "max_temp_directory_size"):
+                self.connection.execute(
+                    f"SET max_temp_directory_size='{self.config.max_temp_directory_size}'"
+                )
+                logging.info(
+                    f"一時ディレクトリのサイズ制限を設定しました: {self.config.max_temp_directory_size}"
+                )
 
             logging.info(f"データベースに接続しました: {self.db_path}")
             return True

@@ -28,6 +28,9 @@ class Config:
         self.batch_size = int(os.getenv("BATCH_SIZE", "5"))
         self.chunk_size = int(os.getenv("CHUNK_SIZE", "10000"))
 
+        # DuckDB設定
+        self.max_temp_directory_size = os.getenv("MAX_TEMP_DIRECTORY_SIZE", "20GB")
+
     def validate(self):
         """設定値を検証する
 
@@ -56,3 +59,4 @@ class Config:
         logging.debug(f"PLANT: {self.plant}")
         logging.debug(f"MACHINE_ID: {self.machine_id}")
         logging.debug(f"DATA_LABEL: {self.data_label}")
+        logging.debug(f"MAX_TEMP_DIRECTORY_SIZE: {self.max_temp_directory_size}")

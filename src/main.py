@@ -38,7 +38,7 @@ def main():
 
     # データベースへの接続
     logging.info("データベースへの接続を開始します...")
-    db_manager = DatabaseManager(config.db, config.encoding)
+    db_manager = DatabaseManager(config.db, config, config.encoding)
     if not db_manager.connect():
         logging.error("データベースへの接続に失敗しました。")
         return
