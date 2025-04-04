@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 import duckdb
+import pandas as pd
 
 
 class DatabaseManager:
@@ -198,10 +199,10 @@ class DatabaseManager:
             return None
 
     def import_dataframe(self, df, table_name, if_exists="append", chunk_size=10000):
-        """Polarsデータフレームをチャンクに分けてデータベースにインポートする
+        """Pandasデータフレームをチャンクに分けてデータベースにインポートする
 
         Args:
-            df (pl.DataFrame): インポートするデータフレーム
+            df (pd.DataFrame): インポートするデータフレーム
             table_name (str): インポート先のテーブル名
             if_exists (str, optional): テーブルが存在する場合の動作。"append"または"replace"。デフォルトは"append"。
             chunk_size (int): 一度に処理する行数。デフォルトは10000。
@@ -232,15 +233,19 @@ class DatabaseManager:
             # チャンク処理
             for i in range(0, total_rows, chunk_size):
                 end_idx = min(i + chunk_size, total_rows)
-                chunk = df.slice(i, end_idx - i)
+                chunk = df.iloc[i:end_idx].copy()
 
                 if i == 0 and (not result or if_exists == "replace"):
                     # 最初のチャンクでテーブルを作成
                     # TIMEカラムがdatetime型の場合はTIMESTAMP型として保存
-                    schema_info = chunk.schema
-                    time_col_type = schema_info.get("TIME")
+                    # Pandasでは列の型を取得する方法が異なります
+                    time_col_type = None
+                    if "TIME" in chunk.columns:
+                        time_col_type = chunk["TIME"].dtype
 
-                    if time_col_type and str(time_col_type).lower() == "datetime":
+                    if time_col_type and pd.api.types.is_datetime64_any_dtype(
+                        time_col_type
+                    ):
                         # TIMEカラムがdatetime型の場合、明示的にTIMESTAMP型として保存
                         # 一時テーブルを作成してから適切な型でメインテーブルを作成
                         self.connection.execute(
@@ -286,10 +291,13 @@ class DatabaseManager:
                     # 以降のチャンクはデータを追加
                     # TIMEカラムがdatetime型の場合、既存のテーブルのTIMEカラムの型を確認
                     if i == 0:  # 最初のチャンクで一度だけ確認
-                        schema_info = chunk.schema
-                        time_col_type = schema_info.get("TIME")
+                        time_col_type = None
+                        if "TIME" in chunk.columns:
+                            time_col_type = chunk["TIME"].dtype
 
-                        if time_col_type and str(time_col_type).lower() == "datetime":
+                        if time_col_type and pd.api.types.is_datetime64_any_dtype(
+                            time_col_type
+                        ):
                             # テーブル情報を取得
                             table_info = self.get_table_info(table_name)
                             time_col_info = next(
