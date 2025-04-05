@@ -1,5 +1,4 @@
 import logging
-import os
 from pathlib import Path
 
 import duckdb
@@ -249,7 +248,7 @@ class DatabaseManager:
                         # TIMEカラムがdatetime型の場合、明示的にTIMESTAMP型として保存
                         # 一時テーブルを作成してから適切な型でメインテーブルを作成
                         self.connection.execute(
-                            f"CREATE TEMP TABLE temp_df AS SELECT * FROM chunk"
+                            "CREATE TEMP TABLE temp_df AS SELECT * FROM chunk"
                         )
 
                         # カラム定義を取得
